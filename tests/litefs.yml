@@ -4,7 +4,8 @@
 fuse:
   # Required. This is the mount directory that applications will
   # use to access their SQLite databases.
-  dir: "/litefs"
+  # Use non-root path as sqlite tests can't run as root
+  dir: "/home/build/litefs"
 
   # Set this flag to true to allow non-root users to access mount.
   # You must set the "user_allow_other" option in /etc/fuse.conf first.
@@ -12,7 +13,7 @@ fuse:
 
   # The debug flag enables debug logging of all FUSE API calls.
   # This will produce a lot of logging. Not for general use.
-  debug: false
+  debug: true
 
 # The data section specifies where internal LiteFS data is stored
 # and how long to retain the transaction files.
@@ -24,23 +25,14 @@ fuse:
 # to extend retention too long.
 data:
   # Path to internal data storage.
-  dir: "/var/lib/litefs"
+  # Use non-root path as sqlite tests can't run as root
+  dir: "/home/build/lib/litefs" 
 
   # Duration to keep LTX files. Latest LTX file is always kept.
   retention: "10m"
 
   # Frequency with which to check for LTX files to delete.
   retention-monitor-interval: "1m"
-
-# The exec field specifies a command to run as a subprocess of
-# LiteFS. This command will be executed after LiteFS either
-# becomes primary or is connected to the primary node. LiteFS
-# will forward signals to the subprocess and LiteFS will
-# automatically shut itself down when the subprocess stops.
-#
-# This can also be specified after a double-dash (--) on the
-# command line invocation of the 'litefs mount' command.
-exec: "myapp -addr :8081"
 
 # If true, then LiteFS will not wait until the node becomes the
 # primary or connects to the primary before starting the subprocess.
@@ -52,31 +44,10 @@ skip-sync: false
 exit-on-error: false
 
 # This section defines settings for the LiteFS HTTP API server.
-# This API server is how nodes communicate with each other.
+# This API server is how noes communicate with each other.
 http:
   # Specifies the bind address of the HTTP API server.
   addr: ":20202"
-
-# This section defines settings for the option HTTP proxy.
-# This proxy can handle primary forwarding & replica consistency
-# for applications that use a single SQLite database.
-proxy:
-  # Specifies the bind address of the proxy server.
-  addr: ":8080"
-
-  # The hostport of the target application.
-  target: "localhost:8081"
-
-  # The name of the database used for TXID tracking.
-  db: "my.db"
-
-  # If true, enables verbose logging of requests by the proxy.
-  debug: false
-
-  # List of paths that are ignored by the proxy. The asterisk is
-  # the only available wildcard. These requests are passed
-  # through to the target as-is.
-  passthrough: ["/debug/*", "*.png"]
 
 # The lease section defines how LiteFS creates a cluster and
 # implements leader election. For dynamic clusters, use the
@@ -86,7 +57,7 @@ proxy:
 # not failover.
 lease:
   # Required. Must be either "consul" or "static".
-  type: "consul"
+  type: "static"
 
   # Required. The URL for this node's LiteFS API.
   # Should match HTTP port.
@@ -101,39 +72,14 @@ lease:
   # and false on the replicas.
   candidate: true
 
-  # A Consul server provides leader election and ensures that the
-  # responsibility of the primary node can be moved in the event
-  # of a deployment or a failure.
-  consul:
-    # Required. The base URL of the Consul server.
-    url: "http://myhost:8500"
-
-    # Required. The key used for obtaining a lease by the primary.
-    # This must be unique for each cluster of LiteFS servers
-    key: "litefs/primary"
-
-    # Length of time before a lease expires. The primary will
-    # automatically renew the lease while it is alive, however,
-    # if it fails to renew in time then a new primary may be
-    # elected after the TTL. This only occurs for unexpected loss
-    # of the leader as normal operation will allow the leader to
-    # handoff the lease to another replica without downtime.
-    #
-    # Consul does not allow a TTL of less than 10 seconds.
-    ttl: "10s"
-
-    # Length of time after the lease expires before a candidate
-    # can become leader. This buffer is intended to prevent
-    # overlap in leadership due to clock skew or in-flight calls.
-    lock-delay: "1s"
-
 # The tracing section enables a rolling, on-disk tracing log.
 # This records every operation to the database so it can be
 # verbose and it can degrade performance. This is for debugging
 # only and should not typically be enabled in production.
 tracing:
   # Output path on disk.
-  path: "/var/log/lifefs/trace.log"
+  # Use non-root path as sqlite tests can't run as root
+  path: "/home/build/log/lifefs/trace.log"
 
   # Maximum size of a single trace log before rolling.
   # Specified in megabytes.

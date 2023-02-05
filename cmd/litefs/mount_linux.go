@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -30,10 +31,11 @@ type MountCommand struct {
 
 	Config Config
 
-	Store      *litefs.Store
-	Leaser     litefs.Leaser
-	FileSystem *fuse.FileSystem
-	HTTPServer *http.Server
+	Store       *litefs.Store
+	Leaser      litefs.Leaser
+	FileSystem  *fuse.FileSystem
+	HTTPServer  *http.Server
+	ProxyServer *http.ProxyServer
 
 	// Used for generating the advertise URL for testing.
 	AdvertiseURLFn func() string
@@ -210,6 +212,12 @@ func configSearchPaths() []string {
 }
 
 func (c *MountCommand) Close() (err error) {
+	if c.ProxyServer != nil {
+		if e := c.ProxyServer.Close(); err == nil {
+			err = e
+		}
+	}
+
 	if c.HTTPServer != nil {
 		if e := c.HTTPServer.Close(); err == nil {
 			err = e
@@ -239,6 +247,8 @@ func (c *MountCommand) Run(ctx context.Context) (err error) {
 		return fmt.Errorf("cannot init store: %w", err)
 	} else if err := c.initHTTPServer(ctx); err != nil {
 		return fmt.Errorf("cannot init http server: %w", err)
+	} else if err := c.initProxyServer(ctx); err != nil {
+		return fmt.Errorf("cannot init proxy server: %w", err)
 	}
 
 	// Instantiate leaser.
@@ -284,6 +294,11 @@ func (c *MountCommand) Run(ctx context.Context) (err error) {
 	// Execute subcommand, if specified in config.
 	if err := c.execCmd(ctx); err != nil {
 		return fmt.Errorf("cannot exec: %w", err)
+	}
+
+	if c.ProxyServer != nil {
+		c.ProxyServer.Serve()
+		log.Printf("proxy server listening on: %s", c.ProxyServer.URL())
 	}
 
 	return nil
@@ -373,6 +388,36 @@ func (c *MountCommand) initHTTPServer(ctx context.Context) error {
 		return fmt.Errorf("cannot open http server: %w", err)
 	}
 	c.HTTPServer = server
+	return nil
+}
+
+func (c *MountCommand) initProxyServer(ctx context.Context) error {
+	// Skip if there's no target set.
+	if c.Config.Proxy.Target == "" {
+		log.Printf("no proxy target set, skipping proxy")
+		return nil
+	}
+
+	// Parse passthrough expressions.
+	var passthroughs []*regexp.Regexp
+	for _, s := range c.Config.Proxy.Passthrough {
+		re, err := http.CompileMatch(s)
+		if err != nil {
+			return fmt.Errorf("cannot parse proxy passthrough expression: %q", s)
+		}
+		passthroughs = append(passthroughs, re)
+	}
+
+	server := http.NewProxyServer(c.Store)
+	server.Target = c.Config.Proxy.Target
+	server.DBName = c.Config.Proxy.DB
+	server.Addr = c.Config.Proxy.Addr
+	server.Debug = c.Config.Proxy.Debug
+	server.Passthroughs = passthroughs
+	if err := server.Listen(); err != nil {
+		return err
+	}
+	c.ProxyServer = server
 	return nil
 }
 
